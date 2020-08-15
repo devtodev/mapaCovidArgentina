@@ -28,7 +28,7 @@ function getRandomStr()
     <script src="https://polyfill.io/v3/polyfill.min.js?features=default"></script>
    <script type="text/javascript" src="https://www.gstatic.com/charts/loader.js"></script>
    <script
-     src="https://maps.googleapis.com/maps/api/js?key=YOURKEY&libraries=&v=weekly&sda=<?php echo date('l jS \of F Y h:i:s A'); ?>"
+     src="https://maps.googleapis.com/maps/api/js?key=AIzaSyDSgsWTwfNItv9D4ajY6-KNVpbU0AkzM_E&libraries=&v=weekly&sda=<?php echo date('l jS \of F Y h:i:s A'); ?>"
      defer
    ></script>
     <link rel="stylesheet" type="text/css" href="style.css?<?= getRandomStr(); ?>" />
