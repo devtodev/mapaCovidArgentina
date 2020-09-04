@@ -38,12 +38,13 @@ function getRandomStr()
     <div id="map"></div>
     <div id = "botonera"></div>
     <script src="https://code.jquery.com/jquery-1.12.4.min.js"></script>
-    <div id="chart_div" ></div>
+    <div id="chart_velas" ></div>
+    <div id="chart_curva" ></div>
     <div id="tests" ></div>
     <div id="fallecidos" ></div>
     <div id="titulo"></div>
     <div id="actualizacion"></div>
-    <div id="acercade"><a href = "javascript:acercade();">proximamente mas info</a></div>
+    <div id="acercade"><a href = "javascript:acercade();">Acerca de Mapa COVID Argentina</a></div>
     <script src="./app.js?rndstr=<?= getRandomStr(); ?>"></script>
   </body>
 </html>

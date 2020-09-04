@@ -7,13 +7,47 @@ DATAJSONTOTALES = "data_totales.json";
 var settings;
 google.charts.load('current', {'packages':['corechart'], 'callback': cargaTotales   }  );
 var chart;
-function  drawChart(poblacion, contagiados, ncontagiados, cuidados, ncuidados, fallecidos, nfallecidos, respiradoresp, nrespiradoresp,  respiradoresn, nrespiradoresn) {
+
+function drawChartCurves(contagios, fallecidos) {
+          var now = new Date();
+          var nanio = settings["Fecha actualización"]["Datos "].substring(6, 10);
+          var nmes =  settings["Fecha actualización"]["Datos "].substring(3, 5);
+          var ndia =  settings["Fecha actualización"]["Datos "].substring(0, 2);
+          var dias = [ ['día', 'contagios (x1)', 'fallecidos (x10)'] ];
+          for (var d = new Date(2020, 3, 3); d <= new Date(nanio, nmes - 1, ndia); d.setDate(d.getDate() + 1)) {
+              fecha = d.toLocaleDateString('en-GB').substring(0,5);
+              ncontagios = 0;
+              nfallecidos = 0;
+              if ((contagios != null) && (contagios[fecha] != null))
+              {
+                ncontagios = contagios[fecha];
+              }
+              if ((fallecidos != null) && (fallecidos[fecha] != null))
+              {
+                nfallecidos = fallecidos[fecha] * 10;
+              }
+              registro = [fecha,  ncontagios, nfallecidos];
+              dias.push( registro );
+          }
+          var data = google.visualization.arrayToDataTable(dias);
+
+          var options = {
+            'height':250,
+            'width':666,
+          };
+          options.chartArea = { left: '10%', top: '10%', width: "95%", height: "66%"};
+          var chart = new google.visualization.LineChart(document.getElementById('chart_curva'));
+          chart.draw(data, options);
+}
+
+function  drawChartVelas(poblacion, contagiados, ncontagiados, curados, ncurados, cuidados, ncuidados, fallecidos, nfallecidos, respiradoresp, nrespiradoresp,  respiradoresn, nrespiradoresn) {
         respiradoresp.splice(0,0,nrespiradoresp + "\nRespiradores\nCOVID +");
         respiradoresn.splice(0,0,nrespiradoresn + "\nRespiradores\nCOVID -");
-        contagiados.splice(0,0,ncontagiados + "\ncontagiados");
+        contagiados.splice(0,0,ncontagiados + "\nCOVID+");
+        curados.splice(0,0,ncurados + "\ncurados");
         fallecidos.splice(0,0,nfallecidos +"\nfallecidos");
         cuidados.splice(0,0,ncuidados +"\ncuidados intensivos");
-        var dataInfo = [ contagiados, cuidados, fallecidos, respiradoresp, respiradoresn ]
+        var dataInfo = [ contagiados, curados, fallecidos, cuidados, respiradoresp, respiradoresn ]
         var data = google.visualization.arrayToDataTable(dataInfo, true);
         var porcien =  ncontagiados*100 ;
         porcien = (porcien / poblacion).toFixed(2);
@@ -21,13 +55,13 @@ function  drawChart(poblacion, contagiados, ncontagiados, cuidados, ncuidados, f
 
         var options = {
           'height':360,
-          'width':576,
+          'width':666,
          'fontSize': 14,
          'title':titulo,
           legend:'none'
         };
        options.chartArea = { left: '5%', top: '20%', width: "95%", height: "66%"};
-       chart = new google.visualization.CandlestickChart(document.getElementById('chart_div'));
+       chart = new google.visualization.CandlestickChart(document.getElementById('chart_velas'));
        chart.draw(data, options);
 }
 
@@ -62,20 +96,22 @@ function formatMoney(amount, decimalCount = 0, decimal = ".", thousands = ",") {
 function getColorByIn1(in1) {
   pormil = 0;
   var pintura = document.getElementById("pintura");
-  if ((zonas!= null) && (zonas[in1] != null))  {
-    pormil = zonas[in1]["pormil"].Confirmado;
-  }
 
-  pormil = 700 < pormil ? 255 : 20 * pormil;
+  if ((zonas!= null) && (zonas[in1] != null) && (typeof(zonas[in1]["pormil"]) != "undefined")  && (typeof(zonas[in1]["pormil"]["COVID+"]) != "undefined") )  {
+    pormil = zonas[in1]["pormil"]["COVID+"];
+console.log('por mil ' + zonas[in1]["totales"]["COVID+"] );
+    if ( zonas[in1]["totales"]["COVID+"] > 0)
+    {
+      pormil = pormil + 80;
+      if ( zonas[in1]["totales"]["COVID+"] > 30)
+        pormil = 255 < pormil ? 255 : 25 * pormil;
+    } else {
+      pormil = 0;
+    }
+} else {
+  console.log("blaaa");
+}
 
-  if (!TOSHOW.localeCompare("departamentos"))
-  {
-    pormil = 700 < pormil ? 255 : 8 * pormil;
-  } else {
-     pormil = 700 < pormil ? 255 : 20 * pormil;
-  }
-
-  pormil = 700 < pormil ? 255 : pormil;
   r = pormil;
   g = 255 - r;
   b = 255 - r;
@@ -95,25 +131,27 @@ function printData(a) {
 }
 
 function acercade() {
-  alert('Se muestra en el mapa los datos publicados por el Ministerio de Salud de la Nación Argentia el día ' + settings["Fecha actualización"]["Datos "] + ' y disponibles para descargar en el link de abajo a la derecha. El mapa de COVID Argentina es un desarrollo realizado por Carlos Miguens. cmiguens@gmail.com ');
+  alert('Se muestra en el mapa los datos publicados por el Ministerio de Salud de la Nación Argentia actualizados al día ' + settings["Fecha actualización"]["Datos "] + ' y disponibles para descargar en el link de abajo a la derecha. El mapa de COVID Argentina es un desarrollo sin fines de lucro realizado por Carlos Miguens (cmiguens@gmail.com) Por favor notificar toda idea o solicitud de correción, gracias!  ');
 }
 
 function showData(a) {
-     if ((a != null) && (a[ "Tests COVID"] != null)) {
-        var text = "<u>Resultados tests</u><br />"   + printData(a["Tests COVID"]) +"<u>Financiamiento</u> <br /> "+ printData(a["Financiamiento"]) ;
+     if ((a != null) && (a[ "test"] != null)) {
+        var text = "<u>Resultados tests</u><br />"   + printData(a["test"]) +"<u>Financiamiento</u> <br /> "+ printData(a["Financiamiento"]) ;
         document.getElementById("fallecidos").innerHTML = text;
       } else {
         document.getElementById("fallecidos").innerHTML = "";
       }
       if ((a != null) && (a["edad"]!=null)) {
-        nvivos = (a["COVID Positivo"]==null)||(a["COVID Positivo"]["Vivos"]==null) ?0:a["COVID Positivo"]["Vivos"];
-        ncuidados = (a["COVID Positivo"]==null)||(a["COVID Positivo"]["Cuidados"]==null) ?0:a["COVID Positivo"]["Cuidados"];
-        nfallecidos = (a["COVID Positivo"]==null)||(a["COVID Positivo"]["Fallecidos"]==null) ?0:a["COVID Positivo"]["Fallecidos"];
+        nvivos = (a["totales"]==null)||(a["totales"]["COVID+"]==null) ?0:a["totales"]["COVID+"];
+        ncurados =  (a["totales"]==null)||(a["totales"]["curados"]==null) ?0:a["totales"]["curados"];
+        ncuidados = (a["totales"]==null)||(a["totales"]["Cuidados"]==null) ?0:a["totales"]["Cuidados"];
+        nfallecidos = (a["totales"]==null)||(a["totales"]["Fallecidos"]==null) ?0:a["totales"]["Fallecidos"];
 
-        nrespiradoresp =(a["Asistencia respiratoria mecanica"]==null)||(a["Asistencia respiratoria mecanica"]["COVID + respirador"]==null) ?0:a["Asistencia respiratoria mecanica"]["COVID + respirador"];
-        nrespiradoresn = (a["Asistencia respiratoria mecanica"]==null)||(a["Asistencia respiratoria mecanica"]["COVID - respirador"]==null) ?0:a["Asistencia respiratoria mecanica"]["COVID - respirador"];
+        nrespiradoresp =(a["respitador"]==null)||(a["respitador"]["+"]==null) ?0:a["respitador"]["+"];
+        nrespiradoresn = (a["respitador"]==null)||(a["respitador"]["-"]==null) ?0:a["respitador"]["-"];
 
-        var contagiados =  [a["edad"]["contagiados"].min, a["edad"]["contagiados"].q1, a["edad"]["contagiados"].q2, a["edad"]["contagiados"].max];
+        var contagiados =  [a["edad"]["COVID+"].min, a["edad"]["COVID+"].q1, a["edad"]["COVID+"].q2, a["edad"]["COVID+"].max];
+        var curados =  [a["edad"]["curados"].min, a["edad"]["curados"].q1, a["edad"]["curados"].q2, a["edad"]["curados"].max];
         var cuidados =  [a["edad"]["cuidados"].min, a["edad"]["cuidados"].q1, a["edad"]["cuidados"].q2, a["edad"]["cuidados"].max];
         var fallecidos = [a["edad"]["fallecidos"].min, a["edad"]["fallecidos"].q1, a["edad"]["fallecidos"].q2, a["edad"]["fallecidos"].max];
 
@@ -128,7 +166,11 @@ function showData(a) {
         {
           poblacion =a["poblacion"]["T"];
         }
-        drawChart(poblacion, contagiados, nvivos, cuidados, ncuidados, fallecidos, nfallecidos, respiradoresp, nrespiradoresp,  respiradoresn, nrespiradoresn);
+        drawChartVelas(poblacion, contagiados, nvivos, curados, ncurados, cuidados, ncuidados, fallecidos, nfallecidos, respiradoresp, nrespiradoresp,  respiradoresn, nrespiradoresn);
+      }
+      if ((a["curvaf"] != null) || (a["curvac"] != null))
+      {
+        drawChartCurves(a["curvac"], a["curvaf"]);
       }
       if ((settings != null) && (settings["Fecha actualización"] != null)) {
           fecha = (settings["Fecha actualización"]["Datos "] != null) ? "<a href='https://sisa.msal.gov.ar/datos/descargas/covid-19/files/Covid19Casos.csv'>Datos actualizados al " + settings["Fecha actualización"]["Datos "] + "</a>" : "";
@@ -172,7 +214,7 @@ function reselecciona(a) {
     document.getElementById("titulo").innerHTML = nombre;
     if(zonas[in1] == null) {
       document.getElementById("fallecidos").innerHTML = "sin datos";
-        drawChart(0,[0, 0, 0, 0], 0, [0, 0, 0, 0], 0, [0, 0, 0, 0], 0, [0, 0, 0, 0], 0, [0, 0, 0, 0], 0);
+        drawChartVelas(0,[0, 0, 0, 0],0,[0, 0, 0, 0], 0, [0, 0, 0, 0], 0, [0, 0, 0, 0], 0, [0, 0, 0, 0], 0, [0, 0, 0, 0], 0);
       } else {
       showData(zonas[in1]);
     }
@@ -181,7 +223,7 @@ function initMap() {
     map = new google.maps.Map(document.getElementById("map"),{
         center: {
             lat: -40,
-            lng: -55
+            lng: -36
         },
         zoom: 4
     });
@@ -234,4 +276,4 @@ function myPeriodicMethod() {
 }
 
 // schedule the first invocation:
-// setTimeout(myPeriodicMethod, 1500);
+//setTimeout(myPeriodicMethod, 1500);

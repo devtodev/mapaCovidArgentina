@@ -1,18 +1,19 @@
 import mysql.connector
 import json
 import numpy as np
+import time
 
 file_zonas = "/srv/http/data_zonas.json"
 file_totales = "/srv/http/data_totales.json"
 file_edades = "/srv/http/data_provincias_edades.json"
-TAG_COVIDPOSITIVO = "COVID Positivo"
-TAG_TESTS = "Tests COVID"
+TAG_COVIDPOSITIVO = "totales"
+TAG_TESTS = "test"
 
 mydb = mysql.connector.connect(
     host="localhost",
-    user="USER",
-    password="PASSWORD",
-    database="mapa"
+    user="root",
+    password="USUARIO",
+    database="CONTRASEÑA"
 )
 
 
@@ -22,10 +23,14 @@ def consulta(query):
     return mycursor.fetchall()
 
 
-def consultaGeograficaFallecidos(geografia, fallecido, covid, tag):
+def consultaGeograficaFallecidos(geografia, fallecido, covid, fecha, tag):
     query = 'select residencia_provincia_id, residencia_departamento_id, count(*) as cantidad '
     query = query + 'from casos where upper(fallecido) = "'+fallecido+'"  and upper(clasificacion_resumen) = "'+covid+'" '
-    query = query + 'group by ' + geografia + ', residencia_provincia_id;'
+    if fecha == '>':
+        query = query + 'and fecha_inicio_sintomas >= CURDATE() - INTERVAL 30 DAY '
+    if fecha == '<':
+        query= query + 'and fecha_inicio_sintomas < CURDATE() - INTERVAL 30 DAY '
+    query = query + ' group by ' + geografia + ', residencia_provincia_id;'
     respuesta = {}
     for row in consulta(query):
         if geografia == "residencia_provincia_id":
@@ -50,11 +55,13 @@ def consultaGeograficaCuidados(geografia, cuidado, covid, tag):
 
 def consultaGeograficaCOVIDPositivo(geografia):
     respuesta = {}
-    fallecidos = consultaGeograficaFallecidos(geografia, "SI", "CONFIRMADO", "Fallecidos")
-    vivos = consultaGeograficaFallecidos(geografia, "NO", "CONFIRMADO", "Vivos")
+    fallecidos = consultaGeograficaFallecidos(geografia, "SI", "CONFIRMADO", "" ,"Fallecidos")
+    curados = consultaGeograficaFallecidos(geografia, "NO", "CONFIRMADO", "<", "curados")
+    covid = consultaGeograficaFallecidos(geografia, "NO", "CONFIRMADO", ">", "COVID+")
     cuidados = consultaGeograficaCuidados(geografia, "SI", "CONFIRMADO", "Cuidados")
-    respuesta = mergeDics(fallecidos, vivos)
+    respuesta = mergeDics(fallecidos, curados)
     respuesta = mergeDics(respuesta, cuidados)
+    respuesta = mergeDics(respuesta, covid)
     return respuesta
 
 def consultaGeografica(query, geografia, tag, subtag):
@@ -76,9 +83,9 @@ def consultaGeograficaAgrupadaClasificada(geografia, agrupacion, clasificacion):
 
 def consultaGeograficaAsistenciaRespiratoria(geografia):
     query = "select residencia_provincia_id, residencia_departamento_id, count(*)  from casos where asistencia_respiratoria_mecanica = 'SI' and fallecido = 'NO' and clasificacion_resumen = 'Confirmado' group by " + geografia + ",residencia_provincia_id;"
-    respuesta = consultaGeografica(query, geografia, "Asistencia respiratoria mecanica" ,"COVID + respirador")
+    respuesta = consultaGeografica(query, geografia, "respitador" ,"+")
     query = "select residencia_provincia_id, residencia_departamento_id, count(*)  from casos where asistencia_respiratoria_mecanica = 'SI' and fallecido = 'NO' and clasificacion_resumen != 'Confirmado' group by " + geografia + ",residencia_provincia_id;"
-    sinCovidSinRespirador = consultaGeografica(query, geografia, "Asistencia respiratoria mecanica", "COVID - respirador")
+    sinCovidSinRespirador = consultaGeografica(query, geografia, "respitador", "-")
     respuesta = mergeDics(respuesta, sinCovidSinRespirador)
     return respuesta
 
@@ -97,8 +104,7 @@ def consultaPoblacion():
         in1 = row[0] + row[1]
         if not in1 in respuesta:
             respuesta[in1] = {}
-            respuesta[in1]["poblacion"]  = {}
-        respuesta[in1]["poblacion"][row[2]] = row[3]
+        respuesta[in1][row[2]] = row[3]
     return respuesta
 
 def consultaTotalAgrupadaClasificada(agrupacion, clasificacion):
@@ -123,6 +129,77 @@ def mergeDics(a, b, path=None):
         else:
             a[key] = b[key]
     return a
+
+def calculoQuartiles(query):
+    edadesDepartamento = [int(i[0], 10) for i in consulta(query)]
+    respuesta = {}
+    if len(edadesDepartamento) == 0:
+        edadesDepartamento = [0]
+        respuesta = {"min": 0, "q1": 0, "q2": 0, "max": 0}
+    else:
+        if len(edadesDepartamento) == 2:
+            respuesta = {"min": int(np.min(edadesDepartamento)), "q1": int(np.min(edadesDepartamento)), "q2": int(np.max(edadesDepartamento)), "max": int(np.max(edadesDepartamento))}
+        else:
+            respuesta = {"min": int(np.min(edadesDepartamento)), "q1": int(np.percentile(edadesDepartamento, 25)), "q2": int(np.percentile(edadesDepartamento, 75)), "max": int(np.max(edadesDepartamento))}
+    return respuesta
+
+def calculoEdadesEspecifico(in1Unificado):
+    respuesta = {}
+    in1Provincia = in1Unificado[0:2]
+    in1Departamento = 0
+    if (len(in1Unificado) > 2):
+        in1Departamento = in1Unificado[2:5]
+    # provincia edades positivo
+    queryEdadPorDepartamento = 'select edad from casos where edad_años_meses = "años" and edad != "" and clasificacion_resumen = "Confirmado" and residencia_provincia_id = "'+in1Provincia+'"'
+    queryEdadPorDepartamento = queryEdadPorDepartamento + 'and fallecido = "NO" and fecha_inicio_sintomas >= CURDATE() - INTERVAL 30 DAY '
+    if len(in1Unificado) > 2:
+        queryEdadPorDepartamento = queryEdadPorDepartamento + ' and residencia_departamento_id = "' + in1Departamento + '";'
+    else:
+        queryEdadPorDepartamento = queryEdadPorDepartamento + ';'
+
+    respuesta["COVID+"] = calculoQuartiles(queryEdadPorDepartamento)
+    # provincia edades curados
+    queryEdadPorDepartamento = 'select edad from casos where edad_años_meses = "años" and edad != "" and clasificacion_resumen = "Confirmado" and residencia_provincia_id = "'+in1Provincia+'"'
+    queryEdadPorDepartamento = queryEdadPorDepartamento + 'and fallecido = "NO" and fecha_inicio_sintomas < CURDATE() - INTERVAL 30 DAY '
+    if len(in1Unificado) > 2:
+        queryEdadPorDepartamento = queryEdadPorDepartamento + ' and residencia_departamento_id = "' + in1Departamento + '";'
+    else:
+        queryEdadPorDepartamento = queryEdadPorDepartamento + ';'
+    respuesta["curados"] = calculoQuartiles(queryEdadPorDepartamento)
+    # falta fallecidos
+    queryEdadPorDepartamento = 'select edad from casos where edad_años_meses = "años" and edad != "" and clasificacion_resumen = "Confirmado" and residencia_provincia_id = "'+in1Provincia+'" and fallecido = "SI" '
+    if len(in1Unificado) > 2:
+        queryEdadPorDepartamento = queryEdadPorDepartamento + ' and residencia_departamento_id = "' + in1Departamento + '";'
+    else:
+        queryEdadPorDepartamento = queryEdadPorDepartamento + ';'
+
+    respuesta["fallecidos"] =  calculoQuartiles(queryEdadPorDepartamento)
+
+    # cuidados intensivos
+    queryEdadPorDepartamento = 'select edad from casos where edad_años_meses = "años" and edad != "" and fallecido = "NO" and residencia_provincia_id = "'+in1Provincia+'" and cuidado_intensivo = "SI" and upper(clasificacion_resumen) = "CONFIRMADO" '
+    if len(in1Unificado) > 2:
+        queryEdadPorDepartamento = queryEdadPorDepartamento + ' and residencia_departamento_id = "' + in1Departamento + '";'
+    else:
+        queryEdadPorDepartamento = queryEdadPorDepartamento + ';'
+    respuesta["cuidados"] =  calculoQuartiles(queryEdadPorDepartamento)
+
+    # Respirador +
+    queryEdadPorDepartamento = 'select edad from casos where edad_años_meses = "años" and edad != "" and fallecido = "NO" and residencia_provincia_id = "'+in1Provincia+'" and asistencia_respiratoria_mecanica = "SI" and upper(clasificacion_resumen) = "CONFIRMADO" '
+    if len(in1Unificado) > 2:
+        queryEdadPorDepartamento = queryEdadPorDepartamento + ' and residencia_departamento_id = "' + in1Departamento + '";'
+    else:
+        queryEdadPorDepartamento = queryEdadPorDepartamento + ';'
+    respuesta["respirador+"] = calculoQuartiles(queryEdadPorDepartamento)
+
+    # Respirador -
+    queryEdadPorDepartamento = 'select edad from casos where edad_años_meses = "años" and edad != "" and fallecido = "NO" and residencia_provincia_id = "'+in1Provincia+'" and asistencia_respiratoria_mecanica = "SI" and upper(clasificacion_resumen) <> "CONFIRMADO" '
+    if len(in1Unificado) > 2:
+        queryEdadPorDepartamento = queryEdadPorDepartamento + ' and residencia_departamento_id = "' + in1Departamento + '";'
+    else:
+        queryEdadPorDepartamento = queryEdadPorDepartamento + ';'
+    respuesta["respirador-"] = calculoQuartiles(queryEdadPorDepartamento)
+
+    return respuesta
 
 def consultaAgrupadaClasificada(geografia, agrupacion, clasificaciones):
     respuesta = {}
@@ -156,7 +233,8 @@ def persistir(nombre, datos):
 
 def consultaGeograficaMaximos(geografia, clasificacionCasos):
     query = 'select '+geografia+', count(*) as "cantidad" from casos' \
-	+ ' where clasificacion_resumen = "'+clasificacionCasos+'" and '+geografia+' != "SIN ESPECIFICAR" ' \
+	+ ' where clasificacion_resumen = "Confirmado" and '+geografia+' != "SIN ESPECIFICAR" ' \
+    + ' and fecha_inicio_sintomas >= CURDATE() - INTERVAL 30 DAY ' \
 	+ ' group by '+geografia+', residencia_provincia_id, clasificacion_resumen ' \
     + ' order by cantidad desc limit 1; '
     myquery = consulta(query)[0]
@@ -171,48 +249,74 @@ def calculaMaximosFacellidosGeografico(geografia):
     resultado = {"Fallecidos": myquery[1]}
     return resultado
 
-def consultaMaximos(clasificacionCasos):
+def consultaMaximos():
     respuesta = {}
+    respuesta["departamento"] = consultaGeograficaMaximos("residencia_departamento_nombre", "COVID+")
+    respuesta["provincia"] = consultaGeograficaMaximos("residencia_provincia_nombre", "COVID+")
     temp = {}
-    for clasificacion in clasificacionCasos:
-        temp["departamento"] = consultaGeograficaMaximos("residencia_departamento_nombre", clasificacion)
-        temp["provincia"] = consultaGeograficaMaximos("residencia_provincia_nombre", clasificacion)
-        respuesta = mergeDics(respuesta, temp)
     temp["departamento"] = calculaMaximosFacellidosGeografico("residencia_departamento_nombre")
     temp["provincia"] = calculaMaximosFacellidosGeografico("residencia_provincia_nombre")
     respuesta = mergeDics(respuesta, temp)
     return respuesta
 
-def calculaPorcentajes(datos, maximos):
+def calculaPorcentajesEspecifico(datos, in1, maximos):
     resultado = {}
-    for in1 in datos:
-        resultado[in1] = {}
-        resultado[in1]["pormil"] = {}
-        if len(in1) == 2:
-            maximosZona = maximos["provincia"]
+    if len(in1) == 2:
+        maximosZona = maximos["provincia"]
+    else:
+        maximosZona = maximos["departamento"]
+    for clasificacion in maximosZona:
+        if "totales" in datos and clasificacion in datos["totales"]:
+            porcentaje = int(datos["totales"][clasificacion] * 1000 / (maximosZona[clasificacion]))
         else:
-            maximosZona = maximos["departamento"]
-        for clasificacion in maximosZona:
-            if in1 in datos:
-                if TAG_TESTS in datos[in1] and clasificacion in datos[in1][TAG_TESTS]:
-                    porcentaje = int(datos[in1][TAG_TESTS][clasificacion] * 1000 / (maximosZona[clasificacion]))
-                else:
-                    porcentaje = 0
-            else:
-                porcentaje = 0
-            resultado[in1]["pormil"][clasificacion] = porcentaje
+            porcentaje = 0
+        resultado[clasificacion] = porcentaje
+
     return resultado
 
+def calculaCurva(in1, campo):
+    query = 'select DATE_FORMAT('+campo+', "%d/%m"), count(*) cantidad from casos '
+    query = query + ' where '+campo+' <> "" and clasificacion_resumen = "Confirmado" '
+    if campo == 'fecha_fallecimiento':
+        query = query + ' and fallecido = "SI" '
+    if campo == 'fecha_diagnostico':
+        query = query + ' and clasificacion_resumen = "Confirmado" '
+    if in1 != "":
+        query = query + 'and residencia_provincia_id = "' + in1[0:2] + '" '
+    if (len(in1) > 2):
+        query = query + 'and residencia_departamento_id = "' + in1[2:5] + '" ';
+    query = query + ' group by '+campo+' order by '+campo+'; '
+    fecha = {}
+    for row in consulta(query):
+        fecha[row[0]] = row[1]
+    return fecha
+
+def calculaByIn1(datos, clasificacionCasos):
+    maximos = consultaMaximos()
+    poblacion = consultaPoblacion()
+    for in1 in datos:
+        datos[in1]["pormil"] = calculaPorcentajesEspecifico(datos[in1], in1, maximos)
+        datos[in1]["edad"] = calculoEdadesEspecifico(in1)
+        datos[in1]["curvaf"] = calculaCurva(in1, 'fecha_fallecimiento')
+        datos[in1]["curvac"] = calculaCurva(in1, 'fecha_diagnostico')
+        if in1 in poblacion:
+            datos[in1]["poblacion"] = poblacion[in1]
+
+
+    return datos
+
 def consultaActualizacion():
-    query = "select ultima_actualizacion from casos order by ultima_actualizacion desc limit 1;"
+    query = "select DATE_FORMAT(ultima_actualizacion, '%d/%m/%Y') from casos order by ultima_actualizacion desc limit 1;"
     return consulta(query)[0][0]
 
 def consultaPositivosTotales():
     respuesta = {}
     query = "select count(*) fallecidos from casos where fallecido = 'SI' and clasificacion_resumen = 'Confirmado';"
     respuesta["Fallecidos"] = consulta(query)[0][0]
-    query = "select count(*) fallecidos from casos where fallecido = 'NO' and clasificacion_resumen = 'Confirmado';"
-    respuesta["Vivos"] = consulta(query)[0][0]
+    query = "select count(*) fallecidos from casos where fallecido = 'NO' and fecha_inicio_sintomas >= CURDATE() - INTERVAL 30 DAY and clasificacion_resumen = 'Confirmado';"
+    respuesta["COVID+"] = consulta(query)[0][0]
+    query = "select count(*) fallecidos from casos where fallecido = 'NO' and fecha_inicio_sintomas < CURDATE() - INTERVAL 30 DAY and clasificacion_resumen = 'Confirmado';"
+    respuesta["curados"] = consulta(query)[0][0]
     query = "select count(*) cuidados from casos where cuidado_intensivo = 'SI' and fallecido = 'NO'  and upper(clasificacion_resumen) = 'CONFIRMADO';"
     respuesta["Cuidados"] = consulta(query)[0][0]
     return respuesta
@@ -220,19 +324,27 @@ def consultaPositivosTotales():
 def consultaAsistenciaRespiratoria():
     respuesta = {}
     query = "select count(*) cantidad from casos where asistencia_respiratoria_mecanica = 'SI' and fallecido = 'NO' and clasificacion_resumen = 'Confirmado';"
-    respuesta["COVID + respirador"] = consulta(query)[0][0]
+    respuesta["+"] = consulta(query)[0][0]
     query = "select count(*) cantidad from casos where asistencia_respiratoria_mecanica = 'SI' and fallecido = 'NO' and clasificacion_resumen != 'Confirmado';"
-    respuesta["COVID - respirador"] = consulta(query)[0][0]
+    respuesta["-"] = consulta(query)[0][0]
     return respuesta
 
 def calculoEdadesTotal():
     # positivos
     respuesta = { "edad": {} }
-    queryEdadPorDepartamento = 'select edad from casos where edad_años_meses = "años" and edad != "" and clasificacion_resumen = "Confirmado";'
+    queryEdadPorDepartamento = 'select edad from casos where edad_años_meses = "años" and edad != "" and clasificacion_resumen = "Confirmado"'
+    queryEdadPorDepartamento = queryEdadPorDepartamento + 'and fallecido = "NO" and fecha_inicio_sintomas >= CURDATE() - INTERVAL 30 DAY; '
     edades = [int(i[0], 10) for i in consulta(queryEdadPorDepartamento)]
     if len(edades) == 0:
         edades = [0]
-    respuesta["edad"]["contagiados"] = {"min": int(np.min(edades)), "q1": int(np.percentile(edades, 25)), "q2": int(np.percentile(edades, 75)), "max": int(np.max(edades))}
+    respuesta["edad"]["COVID+"] = {"min": int(np.min(edades)), "q1": int(np.percentile(edades, 25)), "q2": int(np.percentile(edades, 75)), "max": int(np.max(edades))}
+    # curados
+    queryEdadPorDepartamento = 'select edad from casos where edad_años_meses = "años" and edad != "" and clasificacion_resumen = "Confirmado"'
+    queryEdadPorDepartamento = queryEdadPorDepartamento + ' and fallecido = "NO" and fecha_inicio_sintomas < CURDATE() - INTERVAL 30 DAY; '
+    edades = [int(i[0], 10) for i in consulta(queryEdadPorDepartamento)]
+    if len(edades) == 0:
+        edades = [0]
+    respuesta["edad"]["curados"] = {"min": int(np.min(edades)), "q1": int(np.percentile(edades, 25)), "q2": int(np.percentile(edades, 75)), "max": int(np.max(edades))}
     # fallecidos
     queryEdadPorDepartamento = 'select edad from casos where edad_años_meses = "años" and edad != "" and clasificacion_resumen = "Confirmado" and fallecido = "SI";'
     edades = [int(i[0], 10) for i in consulta(queryEdadPorDepartamento)]
@@ -256,104 +368,20 @@ def calculoEdadesTotal():
     queryEdadNoCovid = 'select edad from casos where edad_años_meses = "años" and edad != "" and fallecido = "NO" and asistencia_respiratoria_mecanica = "SI"  and upper(clasificacion_resumen) <> "CONFIRMADO";'
     edades = [int(i[0], 10) for i in consulta(queryEdadNoCovid)]
     if len(edades) == 0:
-        edades = [0]    
+        edades = [0]
     respuesta["edad"]["respirador-"] = {"min": int(np.min(edades)), "q1": int(np.percentile(edades, 25)),
                                         "q2": int(np.percentile(edades, 75)), "max": int(np.max(edades))}
-
-    return respuesta
-
-def calculoEdades():
-    respuesta = {}
-    # traer todas las provincias
-    queryProvincias = 'select residencia_provincia_id from casos group by residencia_provincia_id;'
-    for provincia in consulta(queryProvincias):
-        in1Provincia = provincia[0]
-        respuesta[in1Provincia] = {}
-        # provincia edades positivo
-        queryEdadPorProvincia = 'select edad from casos where edad_años_meses = "años" and edad != "" and clasificacion_resumen = "Confirmado" and residencia_provincia_id = "'+in1Provincia+'";'
-        edadesProvincia = [int(i[0], 10) for i in consulta(queryEdadPorProvincia)]
-        if len(edadesProvincia) == 0:
-            edadesProvincia = [0]
-        respuesta[in1Provincia]["edad"] = {"contagiados": {"min": int (np.min(edadesProvincia)), "q1": int(np.percentile(edadesProvincia, 25)), "q2": int(np.percentile(edadesProvincia, 75)), "max": int(np.max(edadesProvincia))}}
-
-        # provincia edades fallecidos
-        queryEdadPorProvincia = 'select edad from casos where edad_años_meses = "años" and edad != "" and clasificacion_resumen = "Confirmado" and fallecido = "SI" and residencia_provincia_id = "' + in1Provincia + '";'
-        edadesProvincia = [int(i[0], 10) for i in consulta(queryEdadPorProvincia)]
-        if len(edadesProvincia) == 0:
-            edadesProvincia = [0]
-        respuesta[in1Provincia]["edad"]["fallecidos"] = {"min": int(np.min(edadesProvincia)), "q1": int(np.percentile(edadesProvincia, 25)), "q2": int(np.percentile(edadesProvincia, 75)), "max": int(np.max(edadesProvincia))}
-
-        # provincia edades cuidados intensivos
-        queryEdadPorProvincia = 'select edad from casos where edad_años_meses = "años" and edad != "" and fallecido = "NO" and cuidado_intensivo = "SI" and upper(clasificacion_resumen) = "CONFIRMADO" and residencia_provincia_id = "' + in1Provincia + '";'
-        edadesProvincia = [int(i[0], 10) for i in consulta(queryEdadPorProvincia)]
-        if len(edadesProvincia) == 0:
-            edadesProvincia = [0]
-        respuesta[in1Provincia]["edad"]["cuidados"] = {"min": int(np.min(edadesProvincia)), "q1": int(np.percentile(edadesProvincia, 25)), "q2": int(np.percentile(edadesProvincia, 75)), "max": int(np.max(edadesProvincia))}
-
-        # provincia edades respiradores +
-        queryEdadPorProvincia = 'select edad from casos where edad_años_meses = "años" and edad != "" and fallecido = "NO" and asistencia_respiratoria_mecanica = "SI" and upper(clasificacion_resumen) = "CONFIRMADO" and residencia_provincia_id = "' + in1Provincia + '";'
-        edadesProvincia = [int(i[0], 10) for i in consulta(queryEdadPorProvincia)]
-        if len(edadesProvincia) == 0:
-            edadesProvincia = [0]
-        respuesta[in1Provincia]["edad"]["respirador+"] = {"min": int(np.min(edadesProvincia)), "q1": int(np.percentile(edadesProvincia, 25)), "q2": int(np.percentile(edadesProvincia, 75)), "max": int(np.max(edadesProvincia))}
-
-        # provincia edades respiradores -
-        queryEdadPorProvincia = 'select edad from casos where edad_años_meses = "años" and edad != "" and fallecido = "NO" and asistencia_respiratoria_mecanica = "SI" and upper(clasificacion_resumen) <> "CONFIRMADO" and residencia_provincia_id = "' + in1Provincia + '";'
-        edadesProvincia = [int(i[0], 10) for i in consulta(queryEdadPorProvincia)]
-        if len(edadesProvincia) == 0:
-            edadesProvincia = [0]
-        respuesta[in1Provincia]["edad"]["respirador-"] = {"min": int(np.min(edadesProvincia)), "q1": int(np.percentile(edadesProvincia, 25)), "q2": int(np.percentile(edadesProvincia, 75)), "max": int(np.max(edadesProvincia))}
-
-        # obtengo departamentos para el in1 de la provincia
-        queryDepartamentos = 'select residencia_departamento_id from casos where residencia_provincia_id = "'+in1Provincia+'" group by residencia_departamento_id;'
-        for departamento in consulta(queryDepartamentos):
-            in1Departamento = departamento[0]
-            in1Unificado = in1Provincia + in1Departamento
-            # provincia edades positivo
-            queryEdadPorDepartamento = 'select edad from casos where edad_años_meses = "años" and edad != "" and clasificacion_resumen = "Confirmado" and residencia_departamento_id = "'+in1Departamento+'" and residencia_provincia_id = "' + in1Provincia + '";'
-            edadesDepartamento = [int(i[0], 10) for i in consulta(queryEdadPorDepartamento)]
-            if len(edadesDepartamento) == 0:
-                edadesDepartamento = [0]
-            respuesta[in1Unificado] = {}
-            respuesta[in1Unificado]["edad"] = {"contagiados" : {"min": int(np.min(edadesDepartamento)), "q1": int(np.percentile(edadesDepartamento, 25)), "q2": int(np.percentile(edadesDepartamento, 75)), "max": int(np.max(edadesDepartamento))}}
-
-            # falta fallecidos
-            queryEdadPorDepartamento = 'select edad from casos where edad_años_meses = "años" and edad != "" and clasificacion_resumen = "Confirmado" and residencia_departamento_id = "'+in1Departamento+'" and fallecido = "SI" and residencia_provincia_id = "' + in1Provincia + '";'
-            edadesDepartamento = [int(i[0], 10) for i in consulta(queryEdadPorDepartamento)]
-            if len(edadesDepartamento) == 0:
-                edadesDepartamento = [0]
-            respuesta[in1Unificado]["edad"]["fallecidos"] = {"min": int(np.min(edadesDepartamento)), "q1": int(np.percentile(edadesDepartamento, 25)), "q2": int(np.percentile(edadesDepartamento, 75)), "max": int(np.max(edadesDepartamento))}
-
-            # cuidados intensivos
-            queryEdadPorDepartamento = 'select edad from casos where edad_años_meses = "años" and edad != "" and fallecido = "NO" and residencia_departamento_id = "'+in1Departamento+'" and cuidado_intensivo = "SI" and upper(clasificacion_resumen) = "CONFIRMADO" and residencia_provincia_id = "' + in1Provincia + '";'
-            edadesDepartamento = [int(i[0], 10) for i in consulta(queryEdadPorDepartamento)]
-            if len(edadesDepartamento) == 0:
-                edadesDepartamento = [0]
-            respuesta[in1Unificado]["edad"]["cuidados"] = {"min": int(np.min(edadesDepartamento)), "q1": int(np.percentile(edadesDepartamento, 25)), "q2": int(np.percentile(edadesDepartamento, 75)), "max": int(np.max(edadesDepartamento))}
-
-            # Respirador +
-            queryEdadPorDepartamento = 'select edad from casos where edad_años_meses = "años" and edad != "" and fallecido = "NO" and residencia_departamento_id = "'+in1Departamento+'" and asistencia_respiratoria_mecanica = "SI" and upper(clasificacion_resumen) = "CONFIRMADO" and residencia_provincia_id = "' + in1Provincia + '";'
-            edadesDepartamento = [int(i[0], 10) for i in consulta(queryEdadPorDepartamento)]
-            if len(edadesDepartamento) == 0:
-                edadesDepartamento = [0]
-            respuesta[in1Unificado]["edad"]["respirador+"] = {"min": int(np.min(edadesDepartamento)), "q1": int(np.percentile(edadesDepartamento, 25)), "q2": int(np.percentile(edadesDepartamento, 75)), "max": int(np.max(edadesDepartamento))}
-
-            # Respirador -
-            queryEdadPorDepartamento = 'select edad from casos where edad_años_meses = "años" and edad != "" and fallecido = "NO" and residencia_departamento_id = "'+in1Departamento+'" and asistencia_respiratoria_mecanica = "SI" and upper(clasificacion_resumen) <> "CONFIRMADO" and residencia_provincia_id = "' + in1Provincia + '";'
-            edadesDepartamento = [int(i[0], 10) for i in consulta(queryEdadPorDepartamento)]
-            if len(edadesDepartamento) == 0:
-                edadesDepartamento = [0]
-            respuesta[in1Unificado]["edad"]["respirador-"] = {"min": int(np.min(edadesDepartamento)), "q1": int(np.percentile(edadesDepartamento, 25)), "q2": int(np.percentile(edadesDepartamento, 75)), "max": int(np.max(edadesDepartamento))}
-
     return respuesta
 
 def calculaTotales(clasificacionCasos):
     totales = calculoEdadesTotal()
-    totales["Tests COVID"] = consultaAgrupadaClasificada("", "clasificacion_resumen", clasificacionCasos)
-    totales["COVID Positivo"] = consultaPositivosTotales()
-    totales["Asistencia respiratoria mecanica"] = consultaAsistenciaRespiratoria()
+    totales["test"] = consultaAgrupadaClasificada("", "clasificacion_resumen", clasificacionCasos)
+    totales["totales"] = consultaPositivosTotales()
+    totales["respitador"] = consultaAsistenciaRespiratoria()
     totales["Financiamiento"] = consultaTotales("origen_financiamiento", "")
     totales["Fecha actualización"] = {"Datos ": consultaActualizacion(), "Sistema": "2020-07-28"}
+    totales["curvaf"] = calculaCurva("", 'fecha_fallecimiento')
+    totales["curvac"] = calculaCurva("", 'fecha_diagnostico')
     # totales["Por sexo"] = consultaTotales("sexo", "")
     persistir(file_totales, totales)
     return
@@ -367,42 +395,27 @@ def calculaZona(geografia, clasificacionCasos):
     respuesta = mergeDics(respuesta, respiradores)
     financiamiento = consultaGeograficaOrigenFinanciamiento(geografia)
     respuesta = mergeDics(respuesta, financiamiento)
-    # edades = calculoEdadesTotal()
-#    respuesta = mergeDics(respuesta, edades)
-    # totales["Por sexo"] = consultaTotales("sexo", "")
     return respuesta
 
-def getPeople():
-    respuesta = {}
-    # cambiar nombre a2020 por el año correspondiente!
-    query = 'select provincia_id, provincia_nombre, a2020 from poblacion group by provincia_id, provincia_nombre;'
-    for row in consulta(query):
-        provincia_id = row[0]
-        depto_nombre = row[1]
-        habitantes = row[2]
-
-        respuesta[in1] = {TAG_COVIDPOSITIVO: {tag: row[2]}}
-
-
-    return respuesta;
-
+start_time = time.time()
 # totales
 clasificacionCasos = consultaTotales("clasificacion_resumen", "")
 calculaTotales(clasificacionCasos)
 
-# departamentos
 departamentos = calculaZona('residencia_departamento_id', clasificacionCasos)
 provincias = calculaZona('residencia_provincia_id', clasificacionCasos)
 
-zonas = mergeDics(departamentos, provincias)
-maximos = consultaMaximos(clasificacionCasos)
-pormil = calculaPorcentajes(zonas, maximos)
-zonas = mergeDics(zonas, pormil)
-edades = calculoEdades()
-zonas = mergeDics(zonas, edades)
-poblaciones = consultaPoblacion()
-zonas = mergeDics(zonas, poblaciones)
-print("-----")
+zonas = departamentos
+zonas.update(provincias)
+
+print("--- Tiempo parcial de ejecucion:  ",  divmod(time.time() - start_time,60) )
+
+byIn1 = calculaByIn1(zonas, clasificacionCasos)
+
+zonas = mergeDics(zonas, byIn1)
+
 print(zonas)
-print("+++++")
+
 persistir(file_zonas, zonas)
+
+print("--- Tiempo de ejecucion:  ",  divmod(time.time() - start_time,60) )
