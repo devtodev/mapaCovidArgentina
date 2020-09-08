@@ -10,9 +10,9 @@ var chart;
 
 function drawChartCurves(contagios, fallecidos) {
           var now = new Date();
-          var nanio = settings["Fecha actualización"]["Datos "].substring(6, 10);
-          var nmes =  settings["Fecha actualización"]["Datos "].substring(3, 5);
-          var ndia =  settings["Fecha actualización"]["Datos "].substring(0, 2);
+          var nanio = settings["Fecha actualizacion"]["Datos"].substring(6, 10);
+          var nmes =  settings["Fecha actualizacion"]["Datos"].substring(3, 5);
+          var ndia =  settings["Fecha actualizacion"]["Datos"].substring(0, 2);
           var dias = [ ['día', 'contagios (x1)', 'fallecidos (x10)'] ];
           for (var d = new Date(2020, 3, 3); d <= new Date(nanio, nmes - 1, ndia); d.setDate(d.getDate() + 1)) {
               fecha = d.toLocaleDateString('en-GB').substring(0,5);
@@ -99,7 +99,7 @@ function getColorByIn1(in1) {
 
   if ((zonas!= null) && (zonas[in1] != null) && (typeof(zonas[in1]["pormil"]) != "undefined")  && (typeof(zonas[in1]["pormil"]["COVID+"]) != "undefined") )  {
     pormil = zonas[in1]["pormil"]["COVID+"];
-console.log('por mil ' + zonas[in1]["totales"]["COVID+"] );
+//console.log('por mil ' + zonas[in1]["totales"]["COVID+"] );
     if ( zonas[in1]["totales"]["COVID+"] > 0)
     {
       pormil = pormil + 80;
@@ -109,7 +109,7 @@ console.log('por mil ' + zonas[in1]["totales"]["COVID+"] );
       pormil = 0;
     }
 } else {
-  console.log("blaaa");
+//  console.log("blaaa");
 }
 
   r = pormil;
@@ -131,7 +131,7 @@ function printData(a) {
 }
 
 function acercade() {
-  alert('Se muestra en el mapa los datos publicados por el Ministerio de Salud de la Nación Argentia actualizados al día ' + settings["Fecha actualización"]["Datos "] + ' y disponibles para descargar en el link de abajo a la derecha. El mapa de COVID Argentina es un desarrollo sin fines de lucro realizado por Carlos Miguens (cmiguens@gmail.com) Por favor notificar toda idea o solicitud de correción, gracias!  ');
+  alert('Se muestra en el mapa los datos publicados por el Ministerio de Salud de la Nación Argentia actualizados al día ' + settings["Fecha actualizacion"]["Datos"] + ' y disponibles para descargar en el link de abajo a la derecha. El mapa de COVID Argentina es un desarrollo sin fines de lucro realizado por Carlos Miguens (cmiguens@gmail.com) Por favor notificar toda idea o solicitud de correción, gracias!  ');
 }
 
 function showData(a) {
@@ -172,8 +172,8 @@ function showData(a) {
       {
         drawChartCurves(a["curvac"], a["curvaf"]);
       }
-      if ((settings != null) && (settings["Fecha actualización"] != null)) {
-          fecha = (settings["Fecha actualización"]["Datos "] != null) ? "<a href='https://sisa.msal.gov.ar/datos/descargas/covid-19/files/Covid19Casos.csv'>Datos actualizados al " + settings["Fecha actualización"]["Datos "] + "</a>" : "";
+      if ((settings != null) && (settings["Fecha actualizacion"] != null)) {
+          fecha = (settings["Fecha actualizacion"]["Datos"] != null) ? "<a href='https://sisa.msal.gov.ar/datos/descargas/covid-19/files/Covid19Casos.csv'>Datos actualizados al " + settings["Fecha actualizacion"]["Datos"] + "</a>" : "";
           document.getElementById("actualizacion").innerHTML = fecha
       }
 }
