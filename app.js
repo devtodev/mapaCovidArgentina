@@ -95,23 +95,26 @@ function formatMoney(amount, decimalCount = 0, decimal = ".", thousands = ",") {
 
 function getColorByIn1(in1) {
   pormil = 0;
-  var pintura = document.getElementById("pintura");
-
-  if ((zonas!= null) && (zonas[in1] != null) && (typeof(zonas[in1]["pormil"]) != "undefined")  && (typeof(zonas[in1]["pormil"]["COVID+"]) != "undefined") )  {
-    pormil = zonas[in1]["pormil"]["COVID+"];
-//console.log('por mil ' + zonas[in1]["totales"]["COVID+"] );
-    if ( zonas[in1]["totales"]["COVID+"] > 0)
-    {
-      pormil = pormil + 80;
-      if ( zonas[in1]["totales"]["COVID+"] > 30)
-        pormil = 255 < pormil ? 255 : 25 * pormil;
-    } else {
+  try {
+        var pintura = document.getElementById("pintura");
+        if ((zonas!= null) && (zonas[in1] != null) && (typeof(zonas[in1]["pormil"]) != "undefined")  && (typeof(zonas[in1]["pormil"]["COVID+"]) != "undefined") )
+        {
+          pormil = zonas[in1]["pormil"]["COVID+"];
+          if ( zonas[in1]["totales"]["COVID+"] > 0)
+          {
+            pormil = pormil + 80;
+            if ( zonas[in1]["totales"]["COVID+"] > 30)
+              pormil = 255 < pormil ? 255 : 25 * pormil;
+          } else {
+            pormil = 0;
+          }
+        } else {
+          console.log("blaaa");
+        }
+      console.log("por mil " + pormil);
+  } catch(e) {
       pormil = 0;
-    }
-} else {
-//  console.log("blaaa");
-}
-
+  }
   r = pormil;
   g = 255 - r;
   b = 255 - r;
@@ -229,11 +232,9 @@ function initMap() {
     });
     map.data.loadGeoJson(GEOJSONTOSHOW);
     map.data.setStyle(function(a) {
-        try {
           in1 = a.getProperty("in1");
           nombre = a.getProperty("nam");
           color = getColorByIn1(in1);
-        } catch(e) {color = 0}
         return {
             fillColor: color,
             strokeWeight: 1
