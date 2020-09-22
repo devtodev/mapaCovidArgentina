@@ -20,16 +20,22 @@
   position: absolute;
   float:right;
   font-size:12px;
-  margin:auto;
-  padding-top: 25px;
+  top: 36px;
   right: 0;
 }
 #chart_curva {
   position: absolute;
   float:right;
   font-size:12px;
-  margin:auto;
-  padding-top: 390px;
+  top: 36px;
+  right: 0;
+}
+#chart_defunciones {
+  position: absolute;
+  background-color:rgba(255, 255, 255, 0.90);
+  float:right;
+  font-size:15px;
+  top: 37px;
   right: 0;
 }
 #pintor {

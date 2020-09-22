@@ -38,8 +38,11 @@ function getRandomStr()
     <div id="map"></div>
     <div id = "botonera"></div>
     <script src="https://code.jquery.com/jquery-1.12.4.min.js"></script>
-    <div id="chart_velas" ></div>
-    <div id="chart_curva" ></div>
+    <div style="position: relative;">
+        <div id="chart_velas" ></div>
+        <div id="chart_curva" ></div>
+        <div id="chart_defunciones" >asdadssad</div>
+  </div>
     <div id="tests" ></div>
     <div id="fallecidos" ></div>
     <div id="titulo"></div>

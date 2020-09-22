@@ -4,9 +4,12 @@ TOSHOW = "" != urlParams ? "departamentos" : "provincias";
 GEOJSONTOSHOW = "departamentos" != TOSHOW ? "departamento.geojson" : "provincia.geojson";
 DATAJSONTOSHOW = "data_zonas.json";
 DATAJSONTOTALES = "data_totales.json";
+DEFUNCIONES_PAIS = "defunciones_argentina.json";
+
 var settings;
 google.charts.load('current', {'packages':['corechart'], 'callback': cargaTotales   }  );
 var chart;
+var defunciones = {};
 
 function drawChartCurves(contagios, fallecidos) {
           var now = new Date();
@@ -32,13 +35,36 @@ function drawChartCurves(contagios, fallecidos) {
           var data = google.visualization.arrayToDataTable(dias);
 
           var options = {
-            'height':250,
-            'width':666,
+              'height':360,
+              'width':666,
+             'fontSize': 14,
+             'title':'Lineas de tiempo de contagios y fallecidos de COVID19',
           };
           options.chartArea = { left: '10%', top: '10%', width: "95%", height: "66%"};
           var chart = new google.visualization.LineChart(document.getElementById('chart_curva'));
           chart.draw(data, options);
 }
+
+function  drawDefunciones(in1) {
+     panel = document.getElementById('chart_defunciones');
+     mensaje = "<h3>Versus total de defunciones 2018</h3>";
+
+     mensaje = mensaje + '<table class="table"><thead><tr><th scope="col">defunciones</th><th scope="col">causa</th><tr></thead><tbody>'
+     try {
+       keys = Object.keys(defunciones[in1]);
+       for (causa in keys) {
+         nombre = (keys[causa] != "COVID19")? defunciones["codigos"][keys[causa]] : keys[causa];
+         cantidad = defunciones[in1][keys[causa]]
+         mensaje = mensaje + "<tr> <td>"  + cantidad + " </td><td>" + nombre.substring(0, 100) + "</td></tr>";
+       }
+       mensaje = mensaje + "  </tbody></table>"
+       mensaje = mensaje + "<center> <a href = 'https://datos.gob.ar/dataset/salud-defunciones-ocurridas-registradas-republica-argentina/archivo/salud_75621151-2d67-4535-9b69-0f99c6a8cf52'>dataset</a></center> "
+    } catch(e){
+      mensaje = "";
+    }
+     panel.innerHTML = mensaje;
+}
+
 
 function  drawChartVelas(poblacion, contagiados, ncontagiados, curados, ncurados, cuidados, ncuidados, fallecidos, nfallecidos, respiradoresp, nrespiradoresp,  respiradoresn, nrespiradoresn) {
         respiradoresp.splice(0,0,nrespiradoresp + "\nRespiradores\nCOVID +");
@@ -51,7 +77,7 @@ function  drawChartVelas(poblacion, contagiados, ncontagiados, curados, ncurados
         var data = google.visualization.arrayToDataTable(dataInfo, true);
         var porcien =  ncontagiados*100 ;
         porcien = (porcien / poblacion).toFixed(2);
-        var titulo = (poblacion == 0)? '\nEdades min,  max y cuartiles':  formatMoney(poblacion) + ' poblacion total \nEdades min,  max y cuartiles';
+        var titulo = (poblacion == 0)? '\n Grafico edades min,  max y cuartiles':  formatMoney(poblacion) + ' poblacion total \nEdades min,  max y cuartiles';
 
         var options = {
           'height':360,
@@ -109,9 +135,8 @@ function getColorByIn1(in1) {
             pormil = 0;
           }
         } else {
-          console.log("blaaa");
+            pormil = 0;
         }
-      console.log("por mil " + pormil);
   } catch(e) {
       pormil = 0;
   }
@@ -196,6 +221,14 @@ $(document).ready(function() {
         console.log("An error has occurred.")
     })
 });
+$(document).ready(function() {
+    $.getJSON(DEFUNCIONES_PAIS, function(data) {
+        defunciones = data
+        drawDefunciones(0);
+    }).fail(function() {
+        console.log("An error has occurred.")
+    })
+});
 var getCircularReplacer = function() {
     var a = new WeakSet;
     return function(c, d) {
@@ -219,6 +252,7 @@ function reselecciona(a) {
       document.getElementById("fallecidos").innerHTML = "sin datos";
         drawChartVelas(0,[0, 0, 0, 0],0,[0, 0, 0, 0], 0, [0, 0, 0, 0], 0, [0, 0, 0, 0], 0, [0, 0, 0, 0], 0, [0, 0, 0, 0], 0);
       } else {
+      drawDefunciones(in1)
       showData(zonas[in1]);
     }
 }
@@ -247,7 +281,7 @@ function initMap() {
     });
 
     map.data.addListener("mouseover", function(a) {
-      if (seleccion == "1") {
+      if (seleccion == "1")  {
           reselecciona(a);
       }
     });
@@ -255,13 +289,47 @@ function initMap() {
         if (seleccion != "") {
           map.data.revertStyle();
           document.getElementById("titulo").innerHTML = "Argentina";
+          drawDefunciones("0") ;
           showData(settings);
         }
     });
 }
 
-botonera = "departamentos" == TOSHOW ?  ' <a href="https://www.elestadodelclima.com/mapa/index.php">Ver departamentos</a> ' : '<a href = "https://www.elestadodelclima.com/mapa/index.php?mostrar=provincias">Ver provincias</a>';
+function reloadZona()
+{
+  eleccion = document.getElementById("ver_zona").selectedIndex;
+  opciones = document.getElementById("ver_zona").options;
+  mostrar = opciones[eleccion].value;
+  if (mostrar == "provincias") {
+    window.location.href = "https://www.elestadodelclima.com/mapa/index.php?mostrar=provincias";
+  } else {
+    window.location.href = "https://www.elestadodelclima.com/mapa/index.php";
+  }
+}
+
+function logicaDetalle()
+{
+    eleccion = document.getElementById("ver_detalle").selectedIndex;
+    opciones = document.getElementById("ver_detalle").options;
+    mostrar = opciones[eleccion].value;
+    edades = document.getElementById("chart_velas");
+    comparativa = document.getElementById("chart_defunciones");
+    lineas = document.getElementById("chart_curva");
+    edades.style.visibility = (mostrar == "edades") ? 'visible' : 'hidden';
+    comparativa.style.visibility = (mostrar == "comparativa") ? 'visible' : 'hidden';
+    lineas.style.visibility = (mostrar == "lineas") ? 'visible' : 'hidden';
+}
+
+ver_zona  = "<select id = 'ver_zona' name = 'ver_zona'><option value='departamentos'>departamentos</option><option value='provincias'>provincias</option></select>"
+ver_detalle = "<select id = 'ver_detalle' name = 'ver_detalle'><option value='edades'>edades</option><option value='lineas'>lineas de tiempo</option><option value='comparativa'>comparativa</option></select>"
+botonera = "Agrupar en " + ver_zona + "&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;" + " ver grafico " +  ver_detalle
 document.getElementById("botonera").innerHTML = botonera;
+document.getElementById("ver_detalle").onchange = function(a){ logicaDetalle(); };
+document.getElementById("ver_zona").onchange = function(a){ reloadZona(); };
+
+mostrar = (TOSHOW == "provincias")?0:1;
+document.getElementById('ver_zona').getElementsByTagName('option')[mostrar].selected = 'selected';
+
 
 function myPeriodicMethod() {
   $.ajax({
@@ -276,5 +344,6 @@ function myPeriodicMethod() {
   });
 }
 
+logicaDetalle();
 // schedule the first invocation:
-//setTimeout(myPeriodicMethod, 1500);
+setTimeout(myPeriodicMethod, 1500);
