@@ -47,9 +47,8 @@ function drawChartCurves(contagios, fallecidos) {
 
 function  drawDefunciones(in1) {
      panel = document.getElementById('chart_defunciones');
-     mensaje = "<h3>Versus total de defunciones 2018</h3>";
-
-     mensaje = mensaje + '<table class="table"><thead><tr><th scope="col">defunciones</th><th scope="col">causa</th><tr></thead><tbody>'
+     mensaje = "";
+     mensaje = mensaje + '<table class="table table-hover table-dark"><thead><tr><th scope="col">defunciones</th><th scope="col">causa</th><tr></thead><tbody>'
      try {
        keys = Object.keys(defunciones[in1]);
        for (causa in keys) {
@@ -95,7 +94,7 @@ function cargaTotales() {
   $.getJSON(DATAJSONTOTALES, function(a) {
     if (seleccion != "") {
       settings = a;
-      document.getElementById("titulo").innerHTML = "Argentina";
+      document.getElementById("mapa_titulo").innerHTML = "Argentina";
       showData(a);
     }
   }).fail(function() {
@@ -159,16 +158,11 @@ function printData(a) {
 }
 
 function acercade() {
-  alert('Se muestra en el mapa los datos publicados por el Ministerio de Salud de la Nación Argentina actualizados al día ' + settings["Fecha actualizacion"]["Datos"] + ' y disponibles para descargar en el link de abajo a la derecha. El mapa de COVID Argentina es un desarrollo sin fines de lucro realizado por Carlos Miguens (cmiguens@gmail.com) Por favor notificar toda idea o solicitud de correción, gracias!  ');
+  alert('Se muestra en el mapa los datos publicados por el Ministerio de Salud de la Nación Argentia actualizados al día ' + settings["Fecha actualizacion"]["Datos"] + ' y disponibles para descargar en el link de abajo a la derecha. El mapa de COVID Argentina es un desarrollo sin fines de lucro realizado por Carlos Miguens (cmiguens@gmail.com) Por favor notificar toda idea o solicitud de correción, gracias!  ');
 }
 
 function showData(a) {
-     if ((a != null) && (a[ "test"] != null)) {
-        var text = "<u>Resultados tests</u><br />"   + printData(a["test"]) +"<u>Financiamiento</u> <br /> "+ printData(a["Financiamiento"]) ;
-        document.getElementById("fallecidos").innerHTML = text;
-      } else {
-        document.getElementById("fallecidos").innerHTML = "";
-      }
+
       if ((a != null) && (a["edad"]!=null)) {
         nvivos = (a["totales"]==null)||(a["totales"]["COVID+"]==null) ?0:a["totales"]["COVID+"];
         ncurados =  (a["totales"]==null)||(a["totales"]["curados"]==null) ?0:a["totales"]["curados"];
@@ -202,7 +196,7 @@ function showData(a) {
       }
       if ((settings != null) && (settings["Fecha actualizacion"] != null)) {
           fecha = (settings["Fecha actualizacion"]["Datos"] != null) ? "<a href='https://sisa.msal.gov.ar/datos/descargas/covid-19/files/Covid19Casos.csv'>Datos actualizados al " + settings["Fecha actualizacion"]["Datos"] + "</a>" : "";
-          document.getElementById("actualizacion").innerHTML = fecha
+        //  document.getElementById("actualizacion").innerHTML = fecha
       }
 }
 
@@ -216,7 +210,7 @@ $(document).ready(function() {
     $.getJSON(DATAJSONTOSHOW, function(a) {
         zonas = a
         initMap();
-        //showData(zonas);
+        showData(zonas);
     }).fail(function() {
         console.log("An error has occurred.")
     })
@@ -247,7 +241,7 @@ function reselecciona(a) {
     });
     nombre = a.feature.getProperty("nam");
     in1 = a.feature.getProperty("in1");
-    document.getElementById("titulo").innerHTML = nombre;
+    document.getElementById("mapa_titulo").innerHTML = nombre;
     if(zonas[in1] == null) {
       document.getElementById("fallecidos").innerHTML = "sin datos";
         drawChartVelas(0,[0, 0, 0, 0],0,[0, 0, 0, 0], 0, [0, 0, 0, 0], 0, [0, 0, 0, 0], 0, [0, 0, 0, 0], 0, [0, 0, 0, 0], 0);
@@ -257,12 +251,12 @@ function reselecciona(a) {
     }
 }
 function initMap() {
-    map = new google.maps.Map(document.getElementById("map"),{
+    map = new google.maps.Map(document.getElementById("mapa"),{
         center: {
-            lat: -40,
-            lng: -36
+            lat: -52,
+            lng: -58
         },
-        zoom: 4
+        zoom: 3.8
     });
     map.data.loadGeoJson(GEOJSONTOSHOW);
     map.data.setStyle(function(a) {
@@ -288,48 +282,31 @@ function initMap() {
     map.data.addListener("mouseout", function(a) {
         if (seleccion != "") {
           map.data.revertStyle();
-          document.getElementById("titulo").innerHTML = "Argentina";
+          document.getElementById("mapa_titulo").innerHTML = "Argentina";
           drawDefunciones("0") ;
           showData(settings);
         }
     });
 }
-
-function reloadZona()
+sw = 0;
+function refreshMapa()
 {
-  eleccion = document.getElementById("ver_zona").selectedIndex;
-  opciones = document.getElementById("ver_zona").options;
-  mostrar = opciones[eleccion].value;
-  if (mostrar == "provincias") {
-    window.location.href = "https://www.elestadodelclima.com/mapa/index.php?mostrar=provincias";
+  if (sw == 1)  {
+    sw = 0;
+    this.TOSHOW = "provincias";
   } else {
-    window.location.href = "https://www.elestadodelclima.com/mapa/index.php";
+    sw = 1;
+    this.TOSHOW =  "departamentos";
   }
+  GEOJSONTOSHOW = "departamentos" != TOSHOW ? "departamento.geojson" : "provincia.geojson";
+  $.getJSON(DATAJSONTOSHOW, function(a) {
+      zonas = a
+      initMap();
+      showData(zonas);
+  }).fail(function() {
+      console.log("An error has occurred.")
+  })
 }
-
-function logicaDetalle()
-{
-    eleccion = document.getElementById("ver_detalle").selectedIndex;
-    opciones = document.getElementById("ver_detalle").options;
-    mostrar = opciones[eleccion].value;
-    edades = document.getElementById("chart_velas");
-    comparativa = document.getElementById("chart_defunciones");
-    lineas = document.getElementById("chart_curva");
-    edades.style.visibility = (mostrar == "edades") ? 'visible' : 'hidden';
-    comparativa.style.visibility = (mostrar == "comparativa") ? 'visible' : 'hidden';
-    lineas.style.visibility = (mostrar == "lineas") ? 'visible' : 'hidden';
-}
-
-ver_zona  = "<select id = 'ver_zona' name = 'ver_zona'><option value='departamentos'>departamentos</option><option value='provincias'>provincias</option></select>"
-ver_detalle = "<select id = 'ver_detalle' name = 'ver_detalle'><option value='edades'>edades</option><option value='lineas'>lineas de tiempo</option><option value='comparativa'>comparativa</option></select>"
-botonera = "Agrupar en " + ver_zona + "&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;" + " ver grafico " +  ver_detalle
-document.getElementById("botonera").innerHTML = botonera;
-document.getElementById("ver_detalle").onchange = function(a){ logicaDetalle(); };
-document.getElementById("ver_zona").onchange = function(a){ reloadZona(); };
-
-mostrar = (TOSHOW == "provincias")?0:1;
-document.getElementById('ver_zona').getElementsByTagName('option')[mostrar].selected = 'selected';
-
 
 function myPeriodicMethod() {
   $.ajax({
@@ -344,6 +321,6 @@ function myPeriodicMethod() {
   });
 }
 
-logicaDetalle();
+
 // schedule the first invocation:
-setTimeout(myPeriodicMethod, 1500);
+// setTimeout(myPeriodicMethod, 1500);
